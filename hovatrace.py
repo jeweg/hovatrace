@@ -1,21 +1,18 @@
-#/usr/bin/env python3
+#/usr/bin/env python
 
-# hovatrace.py
-# Generates an annotated HTML trace for a HOVALAAG (http://silverspaceship.com/hovalaag) run.
-#
 # MIT License
 # Copyright (c) 2020 Jens Weggemann
-#
+# 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-#
+# 
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-#
+# 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -23,7 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
- 
+
 import sys
 import re
 import argparse  
@@ -42,6 +39,7 @@ parser.add_argument('-n', '--numbers', choices=['s', 'u', 'h', 'b'], default='s'
 parser.add_argument('--strip-comments', action='store_true', help='strip all code comments')
 parser.add_argument('--comments-across-empty-lines', action='store_true', help='if specified, empty lines will not disassociate comment lines with the statement succeeding them')
 parser.add_argument('--always-print-comment-lines', action='store_true', help='if specified, comment lines will be printed for a statement every time, by default they are only printed the first time')
+parser.add_argument('--theme', choices=['dark', 'light'], help='the color theme, defaults to dark')
 args = parser.parse_args()
 
 def err(*argv):
@@ -242,6 +240,76 @@ class Tokenizer(object):
 #====================================================================
 # Output HTML
 
+ColorTheme = namedtuple("ColorTheme", [
+    'bg',
+    'bg_regstate',
+    'bg_regstate_handle',
+    'bg_changedreg',
+    'jump_separator',
+    'syn_dstregister',
+    'syn_srcregister',
+    'syn_operator',
+    'syn_linenumber',
+    'syn_comment',
+    'syn_label',
+    'syn_jump',
+    'syn_function',
+    'syn_constant',
+    'line_marker1',
+    'line_marker2',
+    'line_marker3',
+    'bg_tooltip',
+    'fg_tooltip' ])
+
+# Based on light style from https://github.com/rakr/vim-two-firewatch 
+LightTheme = ColorTheme(
+    bg='#FAF8F5',
+    bg_regstate='#eAe8e5',
+    bg_regstate_handle='#0003',
+    bg_changedreg='#ffffff',
+    jump_separator='#2D2107',
+    syn_dstregister='#718ECD',
+    syn_srcregister='#718ECD',
+    syn_operator='#896724',
+    syn_linenumber='#c2aEa7',
+    syn_comment='#B6AD9A',
+    syn_label='#2D2107',
+    syn_jump='#0A5289',
+    syn_function='#896724',
+    syn_constant='#0A5289',
+    line_marker1='#FDF962',
+    line_marker2='#B6FB8B',
+    line_marker3='#FCC8B8',
+    bg_tooltip='#0A5289d0',
+    fg_tooltip='#FAF8F5')
+
+# Based on dark style from https://github.com/rakr/vim-two-firewatch 
+DarkTheme = ColorTheme(
+    bg='#282c34',
+    bg_regstate='#11151D',
+    bg_regstate_handle='#000000',
+    bg_changedreg='#32363E',
+    jump_separator='#8E9DAE',
+    syn_dstregister='#D6E9FF',
+    syn_srcregister='#D6E9FF',
+    syn_operator='#8EBCF2',
+    syn_linenumber='#55606C',
+    syn_comment='#55606C',
+    syn_label='#D5E8FD',
+    syn_jump='#DE6A6F',
+    syn_function='#C4AB9A',
+    syn_constant='#eaAE9D',
+    line_marker1='#181C24',
+    line_marker2='#0F4909',
+    line_marker3='#702714',
+    bg_tooltip='#0A5289d0',
+    fg_tooltip='#FAF8F5')
+
+if args.theme == 'light':
+    color_theme = LightTheme
+else:
+    color_theme = DarkTheme
+
 if args.output and Path(args.output).is_file() and not args.force:
     err("Output file exists, use --force to overwrite!")
 
@@ -254,117 +322,117 @@ pr('''\
 <head>
 <style>
 /* Based on light style here: https://github.com/rakr/vim-two-firewatch */
-body {
+body {{
     font-family: monospace;
-    background-color: #FAF8F5;
+    background-color: {bg};
     position: relative;
     left: 0;
     top: 0;
     padding-top: 2ch;
-}
-#code {
+}}
+#code {{
     white-space: pre;
-}
-#regstate {
+}}
+#regstate {{
     white-space: pre;
-    background-color: #eAe8e5;
+    background-color: {bg_regstate};
     opacity: .9;
     position: absolute;
     left: 50ch;
     top: 2ch;
     padding-left: 3px;
-}
-#regstate_handle {
+}}
+#regstate_handle {{
     width: 1ch; 
     height: 100%;
     text-align: center;
     left: 0;
     top: 0;
     cursor: col-resize;
-    background: #0003;
+    background: {bg_regstate_handle};
     position: absolute;
-}
-.reg_unchanged {
+}}
+.reg_unchanged {{
     opacity: 0.5;
-}
-.reg_changed {
-    background-color: #ffffff;
-}
-.reg_value_changed {
-    color: #60f060;
-}
-.reg_value_unchanged {
-}
+}}
+.reg_changed {{
+    background-color: {bg_changedreg};
+}}
+.reg_value_changed {{
+    /*color: #60f060;*/
+}}
+.reg_value_unchanged {{
+}}
 
-.code_line {
-}
+.code_line {{
+}}
 
-.linebg0 {
-}
-.linebg1 {
-    background-color: #FCC8B8;
-}
-.linebg2 {
-    background-color: #FDF962;
-}
-.linebg3 {
-    background-color: #B6FB8B;
-}
+.linebg0 {{
+}}
+.linebg1 {{
+    background-color: {line_marker1};
+}}
+.linebg2 {{
+    background-color: {line_marker2};
+}}
+.linebg3 {{
+    background-color: {line_marker3};
+}}
 
-.syn_linenumber {
-    color: #c2aEa7;
+.syn_linenumber {{
+    color: {syn_linenumber};
     cursor: hand;
-}
-.syn_comment {
-    color: #B6AD9A;
+}}
+.syn_comment {{
+    color: {syn_comment};
     font-style: italic;
-}
-.syn_label {
-    color: #2D2107;
+}}
+.syn_label {{
+    color: {syn_label};
     font-weight: bold;
-}
-.syn_dstregister {
-    color: #718ECD;
-}
-.syn_srcregister {
-    color: #718ECD;
-}
-.syn_jump {
-    color: #0A5289;
-}
-.syn_function {
-    color: #896724;
-}
-.syn_constant {
-    color: #0A5289;
-}
-.syn_operator {
-    color: #896724;
-}
-.syn_jump_not_taken {
+}}
+.syn_dstregister {{
+    color: {syn_dstregister};
+}}
+.syn_srcregister {{
+    color: {syn_srcregister};
+}}
+.syn_jump {{
+    color: {syn_jump};
+}}
+.syn_function {{
+    color: {syn_function};
+}}
+.syn_constant {{
+    color: {syn_constant};
+}}
+.syn_operator {{
+    color: {syn_operator};
+}}
+.syn_jump_not_taken {{
     text-decoration: line-through;
-}
+}}
 
-.jump_separator {
+.jump_separator {{
   border-top: 1px solid;
-  border-color: #2D2107;
+  border-color: {jump_separator};
   background-color: transparent;
   opacity: 0.5;
   width: 100%;
   position: absolute;
   z-index: 5;
-}
+}}
 
 /* Tooltip CSS from https://www.w3schools.com/css/css_tooltip.asp */
-.tooltip {
+.tooltip {{
   position: relative;
   display: inline-block;
-}
-.tooltip .tooltiptext {
+}}
+.tooltip .tooltiptext {{
   visibility: hidden;
   pointer-events: none; /* invisible to hover */
-  background-color: #0A5289d0;
-  color: #FAF8F5;
+  background-color: {bg_tooltip};
+  color: {fg_tooltip};
   text-align: center;
   border-radius: 3px;
   padding: 5px 5px;
@@ -372,33 +440,33 @@ body {
   left: 50%;
   position: absolute;
   z-index: 100;
-}
-.tooltip:hover .tooltiptext {
+}}
+.tooltip:hover .tooltiptext {{
   visibility: visible;
-}
+}}
 
 </style>
 <script>
 
-function line_click(the_id) {
+function line_click(the_id) {{
     let elem = document.getElementById(the_id);
     let cl = elem.classList;
     const CYCLE = ["linebg0", "linebg1", "linebg2", "linebg3"];
-    for (let i = 0; i < CYCLE.length; ++i) {
+    for (let i = 0; i < CYCLE.length; ++i) {{
         const next_i = (i + 1) % CYCLE.length;
-        if (cl.contains(CYCLE[i])) {
+        if (cl.contains(CYCLE[i])) {{
             cl.remove(CYCLE[i]);
             cl.add(CYCLE[next_i]);
             return;
-        }
-    }
+        }}
+    }}
     cl.add(CYCLE[1]);
-}
+}}
 
 </script>
 </head>
 <body><div id="code">\
-''', end='')
+'''.format(**color_theme._asdict()), end='')
 
 #====================================================================
 # Output code
@@ -523,7 +591,7 @@ for thing in displayed_trace_info:
         overall_css_class = 'reg_{}changed'.format('un' if not reg_changed else '')
         value_css_class = 'reg_value_{}changed'.format('un' if not reg_changed else '')
 
-        reg_bits = 16 if R == 'ALU' else 12
+        reg_bits = 16 if R == 'ALU' else 1 if R == 'F' else 12
         printed_line += '''\
 <div class="tooltip">\
 <span class="syn_dstregister {occ}">{R}</span>\
