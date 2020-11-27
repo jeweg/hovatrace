@@ -137,7 +137,6 @@ with open(args.code) as f:
         curr_comments = []
         pc_line_num += 1
 
-pc_line_num_digits = math.ceil(math.log(pc_line_num, 10))
 file_line_num_digits = math.ceil(math.log(file_line_num, 10))
 
 #====================================================================
