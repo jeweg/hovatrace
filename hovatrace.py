@@ -381,16 +381,12 @@ body {{
 }}
 
 .wrong_output_value {{
-    border-width: 1px 3px;
-    border-style: solid;
-    border-color: {wrong_output_border};
+    box-shadow: 0px 0px 0px 2px {wrong_output_border};
     display: inline-block;
     z-index: 100;
 }}
 .correct_output_value {{
-    border-width: 1px 3px;
-    border-style: solid;
-    border-color: {correct_output_border};
+    box-shadow: 0px 0px 0px 2px {correct_output_border};
     display: inline-block;
     z-index: 100;
 }}
@@ -629,15 +625,14 @@ for thing in displayed_trace_info:
         if R in ['O1', 'O2']:
             exp_value = getattr(trace_line, 'O1e' if R == 'O1' else 'O2e')
 
-        if exp_value is None or exp_value == reg_value:
+        if exp_value is None:
 
             printed_line += '''\
-<div class="tooltip {occ}{output_value_style}">\
+<div class="tooltip {occ}">\
 <span class="syn_dstregister ">{R}</span>\
 <span class="syn_operator ">=</span>\
 <span class="syn_constant {vcc}">{rv}</span><span class="tooltiptext">{tt}</span></div> '''.format(
                 occ=overall_css_class,
-                output_value_style=' correct_output_value' if R in ['O1', 'O2'] else '',
                 vcc=value_css_class,
                 R=R,
                 rv=properly_padded(make_number_text(reg_value, reg_bits), R),
@@ -646,7 +641,7 @@ for thing in displayed_trace_info:
         else:
 
             printed_line += '''\
-<div class="wrong_output_value">\
+<div class="{wrong_or_correct}">\
 <div class="tooltip {occ}">\
 <span class="syn_dstregister ">{R}</span>\
 <span class="syn_operator ">=</span>\
@@ -656,6 +651,7 @@ for thing in displayed_trace_info:
 <span class="syn_constant {vcc}">({rv2})</span><span class="tooltiptext">{tt2}</span>\
 </div>\
 </div> '''.format(
+                wrong_or_correct='wrong_output_value' if exp_value != reg_value else 'correct_output_value',
                 occ=overall_css_class,
                 vcc=value_css_class,
                 R=R,
