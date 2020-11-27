@@ -1,4 +1,4 @@
-#/usr/bin/env python
+#/usr/bin/env python3
 
 # MIT License
 # Copyright (c) 2020 Jens Weggemann
@@ -137,24 +137,27 @@ with open(args.code) as f:
         curr_comments = []
         pc_line_num += 1
 
+pc_line_num_digits = math.ceil(math.log(pc_line_num, 10))
 file_line_num_digits = math.ceil(math.log(file_line_num, 10))
 
 #====================================================================
 # Parse the trace log
 
-REGISTERS = ['ALU', 'A', 'B', 'C', 'D', 'F', 'W', 'I1', 'I2', 'O1', 'O2', 'PC']
+# We'll treat the expected value of O1 and O2 (if any) as pseudo-registers for convenience.
+REGISTERS = ['ALU', 'A', 'B', 'C', 'D', 'F', 'W', 'I1', 'I2', 'O1', 'O1e', 'O2', 'O2e', 'PC']
 
-TraceLine = namedtuple('TraceLine', REGISTERS, defaults=[False]*len(REGISTERS))
-ChangedRegisters = namedtuple('ChangedRegisters', REGISTERS, defaults = [False] * len(REGISTERS))
+TraceLine = namedtuple('TraceLine', REGISTERS, defaults=[0]*len(REGISTERS))
+ChangedRegisters = namedtuple('ChangedRegisters', REGISTERS, defaults=[False]*len(REGISTERS))
 trace_lines = []
 changed_registers = []
 
-def parse_trace_number(n, reg_index):
+def parse_trace_number(n, R):
+    # Parses a number constant from the trace. Interpretation depends on the specific register.
     if n is None: return None
     n = int(n, 16) # Parse hex
-    if reg_index == 11: # PC is unsigned
+    if R == 'PC': # PC is unsigned
         pass
-    elif reg_index == 0: # ALU is 16-bit 2s-complement signed
+    elif R == 'ALU': # ALU is 16-bit 2s-complement signed
         n = dec_from_2scompl(n, 16)
     else: # Everything else is 12-bit 2s-complement signed
 
@@ -165,28 +168,32 @@ def parse_trace_number(n, reg_index):
         n = dec_from_2scompl(n, 12)
     return n
 
-# Build a regular expression for the trace outline line. Note that the input and output 
-# fields don't occur in every valid line and are hence treated as optional.
-re_log_line = r'^'
-optional_fields = ['I1', 'I2', 'O1', 'O2']
-for reg in REGISTERS:
-    if reg not in optional_fields:
-        re_log_line += r'.*?{}[=:]([0-9A-Fa-f]+)'.format(reg)
-    else:
-        # Same, but all optional.
-        re_log_line += r'(?:.*?{}[=:]([0-9A-Fa-f]+))?'.format(reg)
-re_log_line += r'.*$'
-re_log_line = re.compile(re_log_line)
+REGISTERS = ['ALU', 'A', 'B', 'C', 'D', 'F', 'W', 'I1', 'I2', 'O1', 'O1e', 'O2', 'O2e', 'PC']
+
+re_log_line = re.compile(r'<tr.*?</tr>')
+re_log_line_entry = re.compile(r'(ALU|I1|I2|O1|O2|PC|[ABCDFW])[=:]([0-9a-fA-F]+)(?:\(([0-9a-fA-F]+)\))?')
 
 prev_trace_line = TraceLine()
 with open(args.log) as f:
+    counter = -1
     for line in f.readlines():
-        match = re_log_line.match(line)
+        counter += 1
+        match = re.match(re_log_line, line)
+        # Collect in dict first b/c the TraceLine namedtupe is immutable. Not very elegant.
+        values = {k:None for k in REGISTERS}
         if match:
-            tl = TraceLine(*[parse_trace_number(match.group(i + 1), i) for i in range(len(REGISTERS))])
-            trace_lines.append(tl)
-            changed_registers.append(ChangedRegisters(*[getattr(tl, R) != getattr(prev_trace_line, R) for R in REGISTERS]))
-            prev_trace_line = tl
+            line = match.group(0)
+            for match in re.finditer(re_log_line_entry, line):
+                R, reg_value, expected = match.groups()[:3]
+                values[R] = parse_trace_number(reg_value, R)
+                if R == 'O1': values['O1e'] = parse_trace_number(expected, R)
+                elif R == 'O2': values['O2e'] = parse_trace_number(expected, R)
+                elif R == 'PC': break # terminate before the instruction parts.
+
+            trace_line = TraceLine(*[values[R] for R in REGISTERS])
+            trace_lines.append(trace_line)
+            changed_registers.append(ChangedRegisters(*[values[R] != getattr(prev_trace_line, R) for R in REGISTERS]))
+            prev_trace_line = trace_line
 
 #====================================================================
 # Syntax highlighting machinery
@@ -246,9 +253,12 @@ ColorTheme = namedtuple("ColorTheme", [
     'bg_regstate_handle',
     'bg_changedreg',
     'jump_separator',
+    'wrong_output_border',
+    'correct_output_border',
     'syn_dstregister',
     'syn_srcregister',
     'syn_operator',
+    'syn_outputline',
     'syn_linenumber',
     'syn_comment',
     'syn_label',
@@ -259,7 +269,8 @@ ColorTheme = namedtuple("ColorTheme", [
     'line_marker2',
     'line_marker3',
     'bg_tooltip',
-    'fg_tooltip' ])
+    'fg_tooltip',
+    'tooltip_elem_bg' ])
 
 # Based on light style from https://github.com/rakr/vim-two-firewatch 
 LightTheme = ColorTheme(
@@ -268,9 +279,12 @@ LightTheme = ColorTheme(
     bg_regstate_handle='#0003',
     bg_changedreg='#ffffff',
     jump_separator='#2D2107',
+    wrong_output_border='#ff9000',
+    correct_output_border='#20f030',
     syn_dstregister='#718ECD',
     syn_srcregister='#718ECD',
     syn_operator='#896724',
+    syn_outputline='#E4DBD7',
     syn_linenumber='#c2aEa7',
     syn_comment='#B6AD9A',
     syn_label='#2D2107',
@@ -281,7 +295,8 @@ LightTheme = ColorTheme(
     line_marker2='#B6FB8B',
     line_marker3='#FCC8B8',
     bg_tooltip='#0A5289d0',
-    fg_tooltip='#FAF8F5')
+    fg_tooltip='#FAF8F5',
+    tooltip_elem_bg='#ffe04850')
 
 # Based on dark style from https://github.com/rakr/vim-two-firewatch 
 DarkTheme = ColorTheme(
@@ -290,10 +305,13 @@ DarkTheme = ColorTheme(
     bg_regstate_handle='#000000',
     bg_changedreg='#32363E',
     jump_separator='#8E9DAE',
+    wrong_output_border='#e02000',
+    correct_output_border='#20d010',
     syn_dstregister='#D6E9FF',
     syn_srcregister='#D6E9FF',
     syn_operator='#8EBCF2',
-    syn_linenumber='#55606C',
+    syn_outputline='#3D4854',
+    syn_linenumber='#616C78',
     syn_comment='#55606C',
     syn_label='#D5E8FD',
     syn_jump='#DE6A6F',
@@ -302,8 +320,9 @@ DarkTheme = ColorTheme(
     line_marker1='#181C24',
     line_marker2='#0F4909',
     line_marker3='#702714',
-    bg_tooltip='#0A5289d0',
-    fg_tooltip='#FAF8F5')
+    bg_tooltip='#0A5289ff',
+    fg_tooltip='#FAF8F5',
+    tooltip_elem_bg='#ff803050')
 
 if args.theme == 'light':
     color_theme = LightTheme
@@ -321,7 +340,6 @@ pr('''\
 <html>
 <head>
 <style>
-/* Based on light style here: https://github.com/rakr/vim-two-firewatch */
 body {{
     font-family: monospace;
     background-color: {bg};
@@ -353,15 +371,29 @@ body {{
     position: absolute;
 }}
 .reg_unchanged {{
-    opacity: 0.5;
+    opacity: 0.7;
 }}
 .reg_changed {{
     background-color: {bg_changedreg};
 }}
 .reg_value_changed {{
-    /*color: #60f060;*/
 }}
 .reg_value_unchanged {{
+}}
+
+.wrong_output_value {{
+    border-width: 1px 3px;
+    border-style: solid;
+    border-color: {wrong_output_border};
+    display: inline-block;
+    z-index: 100;
+}}
+.correct_output_value {{
+    border-width: 1px 3px;
+    border-style: solid;
+    border-color: {correct_output_border};
+    display: inline-block;
+    z-index: 100;
 }}
 
 .code_line {{
@@ -379,6 +411,10 @@ body {{
     background-color: {line_marker3};
 }}
 
+.syn_outputline {{
+    color: {syn_outputline};
+    cursor: hand;
+}}
 .syn_linenumber {{
     color: {syn_linenumber};
     cursor: hand;
@@ -427,6 +463,10 @@ body {{
 .tooltip {{
   position: relative;
   display: inline-block;
+  z-index: 100;
+}}
+.tooltip:hover {{
+    background-color: {tooltip_elem_bg};
 }}
 .tooltip .tooltiptext {{
   visibility: hidden;
@@ -436,10 +476,11 @@ body {{
   text-align: center;
   border-radius: 3px;
   padding: 5px 5px;
-  bottom: 100%;
-  left: 50%;
+  bottom: 110%;
+  left: -100%;
   position: absolute;
   z-index: 100;
+  filter: drop-shadow(4px 3px 2px #00000080);
 }}
 .tooltip:hover .tooltiptext {{
   visibility: visible;
@@ -479,6 +520,7 @@ def padded_line_num(num, digits):
     return (' ' * max(0, digits - len(s))) + s
 
 tokenizer = Tokenizer() 
+output_line_digits = 4 # Currently a guess.. we'd have to collect output lines beforehand and prepend afterwards.
 output_line_counter = 0
 
 def is_jump_taken(token, trace_line):
@@ -493,8 +535,9 @@ def is_jump_taken(token, trace_line):
 def output_line(line, trace_line=None):
     global output_line_counter
     output_line_counter += 1
-    pr('<span class="code_line" id="line{}">'.format(output_line_counter), end='')
-    pr('<span class="syn_linenumber" onclick="line_click(parentNode.id)">{}</span> '.format(padded_line_num(line.line_num, file_line_num_digits)), end='')
+    pr('<span class="code_line" id="line{}" onclick="line_click(id)">'.format(output_line_counter), end='')
+    pr('<span class="syn_outputline">{}</span> '.format(padded_line_num(output_line_counter, output_line_digits)), end='')
+    pr('<span class="syn_linenumber">{}</span> '.format(padded_line_num(line.line_num, file_line_num_digits)), end='')
     tokens = tokenizer.tokenize_line(line.text)
     for tok_tag, tok_value in tokens:
         if tok_tag is TokenTag.CONSTANT:
@@ -546,16 +589,6 @@ for trace_line, changed_regs in zip(trace_lines, changed_registers):
                 output_line(line)
                 displayed_trace_info.append(None)
 
-            '''
-            for comment_line in statement.comments:
-                if statement.label and not label_printed and statement.label.line_num < comment_line.line_num:
-                    label_printed = True
-                    output_line(statement.label)
-                    displayed_trace_info.append(None)
-                output_line(comment_line)
-                displayed_trace_info.append(None)
-            '''
-
     output_line(statement.line, trace_line)
     displayed_trace_info.append((trace_line, changed_regs))
     previous_pc = pc
@@ -566,6 +599,7 @@ for trace_line, changed_regs in zip(trace_lines, changed_registers):
 pr('\n\n<div id="regstate"><div id="regstate_handle"></div>', end='')
 
 def properly_padded(n, R):
+    max_chars = 6
     if args.numbers == 's': max_chars = 6 if R == 'ALU' else 1 if R == 'F' else 5
     elif args.numbers == 'u': max_chars = 7 if R == 'ALU' else 2 if R == 'F' else 6
     elif args.numbers == 'h': max_chars = 4 if R == 'ALU' else 1 if R == 'F' else 3
@@ -590,21 +624,48 @@ for thing in displayed_trace_info:
 
         overall_css_class = 'reg_{}changed'.format('un' if not reg_changed else '')
         value_css_class = 'reg_value_{}changed'.format('un' if not reg_changed else '')
-
         reg_bits = 16 if R == 'ALU' else 1 if R == 'F' else 12
-        printed_line += '''\
-<div class="tooltip">\
-<span class="syn_dstregister {occ}">{R}</span>\
-<span class="syn_operator {occ}">=</span>\
-<span class="syn_constant {occ} {vcc}">{rv}</span><span class="tooltiptext">{tt}</span></div> '''.format(
-            occ=overall_css_class,
-            vcc=value_css_class,
-            R=R,
-            rv=properly_padded(make_number_text(reg_value, reg_bits), R),
-            tt=make_number_tooltip(reg_value, reg_bits))
+
+        exp_value = None
+        if R in ['O1', 'O2']:
+            exp_value = getattr(trace_line, 'O1e' if R == 'O1' else 'O2e')
+
+        if exp_value is None or exp_value == reg_value:
+
+            printed_line += '''\
+<div class="tooltip {occ}{output_value_style}">\
+<span class="syn_dstregister ">{R}</span>\
+<span class="syn_operator ">=</span>\
+<span class="syn_constant {vcc}">{rv}</span><span class="tooltiptext">{tt}</span></div> '''.format(
+                occ=overall_css_class,
+                output_value_style=' correct_output_value' if R in ['O1', 'O2'] else '',
+                vcc=value_css_class,
+                R=R,
+                rv=properly_padded(make_number_text(reg_value, reg_bits), R),
+                tt=make_number_tooltip(reg_value, reg_bits))
+
+        else:
+
+            printed_line += '''\
+<div class="wrong_output_value">\
+<div class="tooltip {occ}">\
+<span class="syn_dstregister ">{R}</span>\
+<span class="syn_operator ">=</span>\
+<span class="syn_constant {vcc}">{rv1}</span><span class="tooltiptext">{tt1}</span>\
+</div>\
+<div class="tooltip {occ}">\
+<span class="syn_constant {vcc}">({rv2})</span><span class="tooltiptext">{tt2}</span>\
+</div>\
+</div> '''.format(
+                occ=overall_css_class,
+                vcc=value_css_class,
+                R=R,
+                rv1=properly_padded(make_number_text(reg_value, reg_bits), R),
+                tt1=make_number_tooltip(reg_value, reg_bits),
+                rv2=make_number_text(exp_value, reg_bits),
+                tt2=make_number_tooltip(exp_value, reg_bits))
 
     pr(printed_line)
-                
 
 pr('''\
 </div>
