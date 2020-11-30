@@ -527,7 +527,7 @@ def is_jump_taken(token, trace_line):
         return trace_line.C != 0
     return True
 
-def output_line(line, trace_line=None):
+def output_line(line, trace_line=None, previous_trace_line=None):
     global output_line_counter
     output_line_counter += 1
     pr('<span class="code_line" id="line{}" onclick="line_click(id)">'.format(output_line_counter), end='')
@@ -545,9 +545,9 @@ def output_line(line, trace_line=None):
                 css_for_tag(tok_tag), make_number_text(num, 12), make_number_tooltip(num, 12)), end='')
         else:
             extra_class = ''
-            if tok_tag is TokenTag.JUMP and trace_line:
+            if tok_tag is TokenTag.JUMP and previous_trace_line:
                 # We can be extra smart about this!
-                if not is_jump_taken(tok_value, trace_line):
+                if not is_jump_taken(tok_value, previous_trace_line):
                     extra_class = " syn_jump_not_taken"
             pr('<span class="syn_{}{}">{}</span>'.format(css_for_tag(tok_tag), extra_class, tok_value), end='')
 
@@ -559,6 +559,7 @@ comment_blocks_already_printed_for_pc = set()
 displayed_trace_info = []
 
 previous_pc = None
+previous_trace_line = None
 for trace_line, changed_regs in zip(trace_lines, changed_registers):
     pc = trace_line.PC
     statement = statements_by_pc[pc]
@@ -584,9 +585,10 @@ for trace_line, changed_regs in zip(trace_lines, changed_registers):
                 output_line(line)
                 displayed_trace_info.append(None)
 
-    output_line(statement.line, trace_line)
+    output_line(statement.line, trace_line, previous_trace_line)
     displayed_trace_info.append((trace_line, changed_regs))
     previous_pc = pc
+    previous_trace_line = trace_line
 
 #====================================================================
 # Output register state
