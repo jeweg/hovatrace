@@ -27,4 +27,4 @@ $ ./hoval 3 3.vasm -t 1
 $ python hovatrace.py -c 3.vasm -fo output.html
 ```
 This produces
-<img src="https://github.com/jeweg/hovatrace/raw/master/sample.png">
+<img src="https://github.com/jeweg/hovatrace/raw/main/sample.png">
