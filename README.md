@@ -28,3 +28,5 @@ $ python hovatrace.py -c 3.vasm -fo output.html
 ```
 This produces
 <img src="https://github.com/jeweg/hovatrace/raw/main/sample.png">
+
+(The sample shows an intentionally inefficient solution for problem 3 so as to not spoil much)
