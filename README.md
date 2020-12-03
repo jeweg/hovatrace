@@ -10,7 +10,7 @@ Hovatrace is an annotated HTML trace generator for [HOVALAAG](http://silverspace
 * Comments (preceding and same-line) are associated with statements and used to annotate the trace
 * Dark/light theme
 
-Hovatrace takes as input a code file and a HOVALAAG-generated trace (usually `log.html`) and outputs another HTML file. 
+Hovatrace takes as input a code file and a HOVALAAG-generated trace (usually `log.html`) and outputs another HTML file. Use `--help` for full documentation. `hovalag.py` can also be imported as a module providing code parsing/tokenization and trace parsing as an API. 
 ```
 $ head 3.vasm
     B=20
